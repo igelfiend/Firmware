@@ -372,7 +372,7 @@ void AttitudeEstimatorQ::task_main()
                 if( _fResetRequired )
                 {
                     PX4_INFO("attitude reseted");
-                    _q = math::Quaternion( vision.q );
+                    _q = Quatf( vision.q );
 
                     _rates.zero();
                     _gyro_bias.zero();
