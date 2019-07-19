@@ -59,6 +59,8 @@
 #include <uORB/topics/vehicle_magnetometer.h>
 #include <uORB/topics/vehicle_odometry.h>
 
+#include <uORB/topics/restart_vision_position.h>
+
 extern "C" __EXPORT int attitude_estimator_q_main(int argc, char *argv[]);
 
 using matrix::Dcmf;
@@ -113,6 +115,9 @@ private:
 	int		_vision_odom_sub = -1;
 	int		_mocap_odom_sub = -1;
 	int		_magnetometer_sub = -1;
+	int     _restart_vision_position_sub = -1;  /**< Used for receiving restart signal (sended from commander ACRO mode) */
+
+	bool    _fResetRequired = true;
 
 	orb_advert_t	_att_pub = nullptr;
 
@@ -266,6 +271,7 @@ void AttitudeEstimatorQ::task_main()
 	_params_sub = orb_subscribe(ORB_ID(parameter_update));
 	_global_pos_sub = orb_subscribe(ORB_ID(vehicle_global_position));
 	_magnetometer_sub = orb_subscribe(ORB_ID(vehicle_magnetometer));
+	_restart_vision_position_sub = orb_subscribe(ORB_ID(restart_vision_position));
 
 	update_parameters(true);
 
@@ -318,6 +324,21 @@ void AttitudeEstimatorQ::task_main()
 			_data_good = true;
 		}
 
+		//! NTRLAB
+        // Checking is restart required
+        bool restart_vision_position_updated = false;
+        orb_check(_restart_vision_position_sub, &restart_vision_position_updated);
+        if( restart_vision_position_updated )
+        {
+            restart_vision_position_s restart_vision_pos;
+            if (orb_copy(ORB_ID(restart_vision_position),
+                         _restart_vision_position_sub,
+                         &restart_vision_pos) == PX4_OK)
+            {
+                _fResetRequired = true;
+            }
+        }
+
 		// Update magnetometer
 		bool magnetometer_updated = false;
 		orb_check(_magnetometer_sub, &magnetometer_updated);
@@ -347,6 +368,18 @@ void AttitudeEstimatorQ::task_main()
 			vehicle_odometry_s vision;
 
 			if (orb_copy(ORB_ID(vehicle_visual_odometry), _vision_odom_sub, &vision) == PX4_OK) {
+				//! Checking reset flag, if required - reseting
+                if( _fResetRequired )
+                {
+                    PX4_INFO("attitude reseted");
+                    _q = math::Quaternion( vision.q );
+
+                    _rates.zero();
+                    _gyro_bias.zero();
+                    _fResetRequired = false;
+                    continue;
+                }
+
 				// validation check for vision attitude data
 				bool vision_att_valid = PX4_ISFINITE(vision.q[0])
 							&& (PX4_ISFINITE(vision.pose_covariance[vision.COVARIANCE_MATRIX_ROLL_VARIANCE]) ? sqrtf(fmaxf(

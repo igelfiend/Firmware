@@ -47,6 +47,7 @@ BlockLocalPositionEstimator::BlockLocalPositionEstimator() :
 	_sub_sonar(nullptr),
 	_sub_landing_target_pose(ORB_ID(landing_target_pose), 1000 / 40, 0, &getSubscriptions()),
 	_sub_airdata(ORB_ID(vehicle_air_data), 0, 0, &getSubscriptions()),
+	_sub_restart_vision_position(ORB_ID(restart_vision_position), 1000 / 10, 0, &getSubscriptions()),
 
 	// publications
 	_pub_lpos(ORB_ID(vehicle_local_position), -1, &getPublications()),
@@ -107,6 +108,7 @@ BlockLocalPositionEstimator::BlockLocalPositionEstimator() :
 	// status
 	_receivedGps(false),
 	_lastArmedState(false),
+	_fResetRequired(true),
 
 	// masks
 	_sensorTimeout(UINT16_MAX),
@@ -261,6 +263,12 @@ void BlockLocalPositionEstimator::update()
 	//      _aglLowPass.setState(0);
 	// }
 
+	bool restartVisionPositionUpdated = _sub_restart_vision_position.updated();
+    if( restartVisionPositionUpdated )
+    {
+        _fResetRequired = true;
+    }
+	
 	_lastArmedState = armedState;
 
 	// see which updates are available
